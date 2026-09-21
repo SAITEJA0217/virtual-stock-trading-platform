@@ -1,6 +1,6 @@
 # 📈 Kinetix Virtual Stock Trading Platform MVP
 
-A high-performance, full-stack **Virtual Stock Trading Platform** designed for simulated equity trading on the Indian market. Built from scratch with Next.js 15, TypeScript, Tailwind CSS, Prisma ORM, SQLite, and Recharts.
+A complete, high-performance **Virtual Stock Trading Platform MVP** designed for simulated equity trading on the Indian market. Built from scratch with Next.js 15, TypeScript, Tailwind CSS, Prisma ORM, SQLite, and Recharts.
 
 > [!IMPORTANT]
 > **SIMULATION ONLY • NO REAL MONEY**
@@ -17,6 +17,7 @@ A high-performance, full-stack **Virtual Stock Trading Platform** designed for s
 
 2. **Atomic Trade Execution & Portfolio Engine**:
    - **Predefined User**: Automatically initializes with **Demo Trader** and **₹10,00,000.00** starting virtual cash.
+   - **Server-Authoritative Pricing**: Execution prices are strictly resolved server-side from the SQLite database; client-supplied prices (e.g. malicious price tampering) are discarded.
    - **Atomic Buy Execution**: Validates funds, updates weighted average acquisition price:
      $$\text{newAverage} = \frac{(\text{existingQty} \times \text{existingAvg}) + (\text{newQty} \times \text{newPrice})}{\text{existingQty} + \text{newQty}}$$
    - **Atomic Sell Execution**: Validates position limits, calculates realized P/L:
@@ -49,47 +50,6 @@ A high-performance, full-stack **Virtual Stock Trading Platform** designed for s
 - **Backend**: Next.js API Routes / Server Endpoints
 - **Database & ORM**: SQLite + Prisma ORM (with indexes on `[stockId, timestamp]`)
 - **Data Engine**: Deterministic Geometric Brownian Motion synthetic market generator + CSV validator
-
----
-
-## 📂 Project Architecture
-
-```
-├── data/
-│   └── market-data.csv              # 2,100 deterministic OHLCV records
-├── prisma/
-│   ├── schema.prisma                # SQLite schema (User, Stock, MarketData, Transaction, PortfolioHolding)
-│   └── dev.db                       # Local SQLite database
-├── scripts/
-│   ├── generate-market-data.ts      # Synthetic market data generator
-│   ├── validate-data.ts             # CSV dataset validation script
-│   └── seed.ts                      # Database seeding script
-├── src/
-│   ├── app/
-│   │   ├── page.tsx                 # Dashboard (/): Summary metrics, top movers, allocation, recent trades
-│   │   ├── market/page.tsx          # Market (/market): 10 stock quotes, search, sector filters, quick trades
-│   │   ├── stocks/[symbol]/page.tsx # Stock Details (/stocks/[symbol]): 1D/5D/10D/15D Recharts & OHLC stats
-│   │   ├── portfolio/page.tsx       # Portfolio (/portfolio): Holdings table & Unrealized/Realized P/L
-│   │   ├── transactions/page.tsx    # Transactions (/transactions): Complete execution history with filters
-│   │   └── api/                     # REST API routes for user, stocks, charts, portfolio, and trade execution
-│   ├── components/
-│   │   ├── layout/                  # Navbar, Sidebar, SimulationBar
-│   │   ├── dashboard/               # MetricCards, TopMovers, AllocationChart, RecentTransactions
-│   │   ├── market/                  # StockTable
-│   │   ├── stocks/                  # StockChart, StockStats
-│   │   ├── portfolio/               # HoldingsTable
-│   │   ├── transactions/            # TransactionsTable
-│   │   ├── trade/                   # BuyModal, SellModal
-│   │   └── ui/                      # ToastContainer
-│   ├── context/
-│   │   └── SimulationContext.tsx     # Global simulation timestamp & user state manager
-│   └── lib/
-│       ├── prisma.ts                # Prisma singleton
-│       ├── calculations.ts          # Weighted average price & P/L formulas
-│       ├── formatters.ts            # INR Currency (₹) & Date formatters
-│       ├── market-service.ts        # Database market price & candle queries
-│       └── types.ts                 # TypeScript types & DTOs
-```
 
 ---
 
@@ -138,49 +98,16 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ---
 
-## 🧪 Available Scripts
+## 🧪 Available Scripts & Verification
 
 | Command | Description |
 | :--- | :--- |
-| `npm run dev` | Starts the Next.js local development server |
-| `npm run build` | Compiles the production build |
-| `npm run start` | Runs the compiled production server |
+| `npm run lint` | Runs ESLint checks across all project files |
+| `npm run validate:data` | Validates CSV market dataset integrity (OHLC bounds, volumes) |
+| `npm run test:e2e` | Runs comprehensive 26-test E2E suite including anti-spoofing security verification |
+| `npm run build` | Compiles Next.js production build with full type checking and linting |
+| `npm run dev` | Starts the local development server |
 | `npm run seed` | Seeds SQLite with the demo user, stocks, and 2,100 records |
-| `npm run validate:data` | Validates CSV market dataset integrity |
-| `npm run generate:data` | Re-generates deterministic synthetic market dataset |
-
----
-
-## 🔄 End-to-End Demo Walkthrough
-
-1. **Dashboard Overview**:
-   - Open `/` to see **₹10,00,000.00** starting virtual cash, 0 active positions, Top Gainers & Losers, and the Live Simulation Clock.
-2. **Time Navigation**:
-   - Use the top **Simulation Bar** to switch between 15 trading days (e.g., *15 Sep 2026*) and 14 time intervals (e.g., *10:45 AM*).
-   - Observe real-time price updates across all cards and tables.
-3. **Inspect Stock & Historical Chart**:
-   - Navigate to `/market` and click on **TCS**.
-   - Switch between **1D, 5D, 10D, and 15D** chart views to view historical candle progression.
-4. **Execute BUY Order**:
-   - Click **BUY TCS**, enter 5 shares, and click execute.
-   - Cash decreases by $(5 \times \text{price})$, a new `BUY` transaction is logged, and a holding is created.
-5. **Inspect Portfolio & Unrealized P/L**:
-   - Go to `/portfolio` to see 5 shares of TCS with current market value and unrealized P/L.
-6. **Time-Travel Mark-to-Market**:
-   - Advance the simulation clock to a later trading day and observe how the portfolio value and unrealized P/L change according to the new price.
-7. **Execute SELL Order**:
-   - Sell 2 shares of TCS.
-   - Cash is credited, realized P/L is locked in, and remaining position is 3 shares.
-8. **Audit Ledger**:
-   - Open `/transactions` to verify the complete, filterable record of both `BUY` and `SELL` transactions.
-
----
-
-## 🔒 Security & Data Integrity
-
-- **Server-Authoritative Pricing**: All trades query the database price at the selected simulation timestamp on the server. The client cannot forge or tamper with execution prices.
-- **Negative Balance & Short-Selling Protection**: Trades are rejected if cash or share quantities are insufficient.
-- **Atomic Transactions**: All balance deductions, holding updates, and ledger inserts run inside `prisma.$transaction`.
 
 ---
 

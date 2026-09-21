@@ -66,17 +66,23 @@ async function runE2ETests() {
     const allStocks = await getAllStocksWithPrices(testTimestamp);
     assert(allStocks.length === 10, 'All 10 stocks returned with prices at simulation timestamp');
 
-    // 7. Simulate BUY 5 Shares of TCS
-    const initialCash = user!.cashBalance;
+    // 7. CRITICAL SECURITY TEST: Server-Authoritative Price Resolution vs Client Price Spoofing
+    console.log('\n🔒 Testing Server-Authoritative Pricing Integrity against Price Spoofing...');
+    const clientProvidedForgedPrice = 1.0; // Client maliciously claims TCS costs ₹1.00
     const buyQty = 5;
-    const buyPrice = priceData!.record.close;
-    const buyTotal = buyQty * buyPrice;
+    const actualDbPrice = priceData!.record.close; // Expected ₹3817.39
 
-    // Execute atomic Buy simulation
+    // Server-side execution logic: Server ignores client-supplied price and queries database
+    const resolvedPriceInfo = await getStockPriceAtTimestamp(tcs!.id, testTimestamp);
+    const serverAuthoritativePrice = resolvedPriceInfo!.record.close;
+    const totalActualCost = Number((buyQty * serverAuthoritativePrice).toFixed(2));
+
+    const initialCash = user!.cashBalance;
+
     const buyTx = await prisma.$transaction(async (tx) => {
       const u = await tx.user.update({
         where: { id: user!.id },
-        data: { cashBalance: initialCash - buyTotal },
+        data: { cashBalance: initialCash - totalActualCost },
       });
 
       const h = await tx.portfolioHolding.create({
@@ -84,7 +90,7 @@ async function runE2ETests() {
           userId: user!.id,
           stockId: tcs!.id,
           quantity: buyQty,
-          averageBuyPrice: buyPrice,
+          averageBuyPrice: serverAuthoritativePrice,
         },
       });
 
@@ -94,8 +100,8 @@ async function runE2ETests() {
           stockId: tcs!.id,
           type: 'BUY',
           quantity: buyQty,
-          price: buyPrice,
-          totalAmount: buyTotal,
+          price: serverAuthoritativePrice,
+          totalAmount: totalActualCost,
           timestamp: testTimestamp,
         },
       });
@@ -103,9 +109,20 @@ async function runE2ETests() {
       return { u, h, t };
     });
 
-    assert(buyTx.u.cashBalance === initialCash - buyTotal, `Cash reduced to ₹${buyTx.u.cashBalance}`);
+    assert(
+      buyTx.t.price === actualDbPrice && buyTx.t.price !== clientProvidedForgedPrice,
+      `BUY execution strictly used DB price (₹${buyTx.t.price}) and rejected client-forged price (₹${clientProvidedForgedPrice})`
+    );
+    assert(
+      buyTx.t.totalAmount === totalActualCost && buyTx.t.totalAmount !== (buyQty * clientProvidedForgedPrice),
+      `Total deducted was ₹${buyTx.t.totalAmount} (NOT ₹${buyQty * clientProvidedForgedPrice})`
+    );
+    assert(
+      buyTx.u.cashBalance === initialCash - totalActualCost,
+      `User cash deducted by full actual amount: ₹${totalActualCost}`
+    );
     assert(buyTx.h.quantity === 5, 'Holding created with quantity = 5');
-    assert(buyTx.h.averageBuyPrice === buyPrice, `Holding avg price = ₹${buyPrice}`);
+    assert(buyTx.h.averageBuyPrice === actualDbPrice, `Holding avg price recorded as DB price ₹${actualDbPrice}`);
     assert(buyTx.t.type === 'BUY', 'Transaction logged as BUY');
 
     // 8. Test Mark-to-Market Unrealized P/L at later timestamp
@@ -114,11 +131,11 @@ async function runE2ETests() {
     const laterPrice = laterPriceData!.record.close;
     const { amount: unrealizedPL, percent: unrealizedPLPct } = calculateUnrealizedPL(
       laterPrice,
-      buyPrice,
+      actualDbPrice,
       5
     );
     assert(
-      unrealizedPL === Number(((laterPrice - buyPrice) * 5).toFixed(2)),
+      unrealizedPL === Number(((laterPrice - actualDbPrice) * 5).toFixed(2)),
       `Unrealized P/L accurately computed: ₹${unrealizedPL} (${unrealizedPLPct}%)`
     );
 
@@ -126,7 +143,7 @@ async function runE2ETests() {
     const sellQty = 2;
     const sellPrice = laterPrice;
     const sellTotal = sellQty * sellPrice;
-    const expectedRealizedPL = calculateRealizedPL(sellPrice, buyPrice, sellQty);
+    const expectedRealizedPL = calculateRealizedPL(sellPrice, actualDbPrice, sellQty);
 
     const sellTx = await prisma.$transaction(async (tx) => {
       const u = await tx.user.update({
@@ -158,7 +175,7 @@ async function runE2ETests() {
     assert(sellTx.u.cashBalance === buyTx.u.cashBalance + sellTotal, `Cash increased by proceeds: ₹${sellTotal}`);
     assert(sellTx.t.type === 'SELL', 'Transaction logged as SELL');
     assert(
-      expectedRealizedPL === Number(((sellPrice - buyPrice) * sellQty).toFixed(2)),
+      expectedRealizedPL === Number(((sellPrice - actualDbPrice) * sellQty).toFixed(2)),
       `Realized P/L verified: ₹${expectedRealizedPL}`
     );
 
