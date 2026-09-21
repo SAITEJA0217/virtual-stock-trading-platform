@@ -52,6 +52,7 @@ export function formatDateDisplay(dateStr: string): string {
     day: '2-digit',
     month: 'short',
     year: 'numeric',
+    timeZone: 'UTC',
   });
 }
 
@@ -84,6 +85,7 @@ export function formatDateTimeDisplay(timestampStr: string): string {
     day: '2-digit',
     month: 'short',
     year: 'numeric',
+    timeZone: 'UTC',
   });
 
   const hours = d.getUTCHours();
